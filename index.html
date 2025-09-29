@@ -1,0 +1,154 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Hoopland-Style Basketball</title>
+  <style>
+    body { margin: 0; overflow: hidden; background: #000; }
+    #ui {
+      position: absolute; top: 10px; left: 10px;
+      color: white; font: bold 16px sans-serif;
+      background: rgba(0,0,0,0.5); padding: 10px;
+    }
+    #meter {
+      position: absolute; width: 100px; height: 10px;
+      background: gray; border: 1px solid white;
+      display: none;
+    }
+    #green {
+      position: absolute; height: 10px; background: lime;
+    }
+    #fill {
+      position: absolute; height: 10px; background: orange;
+    }
+  </style>
+</head>
+<body>
+<div id="ui">Score: 0</div>
+<div id="meter"><div id="green"></div><div id="fill"></div></div>
+<script src="https://cdn.jsdelivr.net/npm/three@0.152.2/build/three.min.js"></script>
+<script>
+let scene = new THREE.Scene();
+let camera = new THREE.PerspectiveCamera(75, window.innerWidth/window.innerHeight, 0.1, 1000);
+let renderer = new THREE.WebGLRenderer(); renderer.setSize(window.innerWidth, window.innerHeight);
+document.body.appendChild(renderer.domElement);
+
+let ui = document.getElementById("ui");
+let meter = document.getElementById("meter");
+let green = document.getElementById("green");
+let fill = document.getElementById("fill");
+
+let score = 0;
+let keys = {};
+document.addEventListener("keydown", e => keys[e.key] = true);
+document.addEventListener("keyup", e => keys[e.key] = false);
+
+// Court
+let court = new THREE.Mesh(new THREE.PlaneGeometry(20, 10), new THREE.MeshStandardMaterial({color: 0x228B22}));
+court.rotation.x = -Math.PI / 2; scene.add(court);
+
+// Lighting
+let light = new THREE.DirectionalLight(0xffffff, 1); light.position.set(0, 10, 5); scene.add(light);
+scene.add(new THREE.AmbientLight(0x404040));
+
+// Hoop
+let hoop = new THREE.Mesh(new THREE.TorusGeometry(0.5, 0.1, 16, 100), new THREE.MeshStandardMaterial({color: 0xff0000}));
+hoop.position.set(0, 3, -4); scene.add(hoop);
+
+// Ball
+let ball = new THREE.Mesh(new THREE.SphereGeometry(0.3, 16, 16), new THREE.MeshStandardMaterial({color: 0xffa500}));
+ball.position.set(0, 0.3, 0); scene.add(ball);
+let ballVelocity = new THREE.Vector3();
+let hasBall = true;
+
+// Player
+let player = new THREE.Mesh(new THREE.BoxGeometry(0.5, 1, 0.5), new THREE.MeshStandardMaterial({color: 0x0000ff}));
+player.position.set(0, 0.5, 2); scene.add(player);
+
+// Shot meter
+let charging = false, charge = 0, greenStart = 40, greenEnd = 60;
+
+camera.position.set(0, 6, 10); camera.lookAt(0, 0, 0);
+
+function updateMeter() {
+  if (!hasBall) return meter.style.display = "none";
+  meter.style.display = "block";
+  let x = renderer.domElement.width / 2 - 50;
+  let y = renderer.domElement.height / 2 - 100;
+  meter.style.left = x + "px";
+  meter.style.top = y + "px";
+  green.style.left = greenStart + "px";
+  green.style.width = (greenEnd - greenStart) + "px";
+  fill.style.width = charge + "px";
+}
+
+function shootBall(power, greened) {
+  ballVelocity.set(
+    (hoop.position.x - player.position.x) * 0.1,
+    0.3 + (greened ? 0.3 : 0),
+    (hoop.position.z - player.position.z) * 0.1
+  );
+  if (greened) ball.material.color.set(0xff0000);
+  hasBall = false;
+  charging = false;
+  charge = 0;
+}
+
+function animate() {
+  requestAnimationFrame(animate);
+
+  let speed = 0.1;
+
+  // Movement
+  if (keys["a"]) player.position.x -= speed;
+  if (keys["d"]) player.position.x += speed;
+
+  // Pumpfake
+  if (keys["s"] && hasBall) ball.position.y = 0.2;
+
+  // Jump
+  if (keys["w"] && player.position.y <= 0.5) {
+    player.position.y = 1;
+    if (hasBall) shootBall(50, false);
+  }
+
+  // Gravity
+  if (player.position.y > 0.5) {
+    player.position.y -= 0.05;
+    if (player.position.y <= 0.5 && hasBall) shootBall(charge, charge >= greenStart && charge <= greenEnd);
+  }
+
+  // Manual shoot
+  if (keys["Shift"] && hasBall) {
+    charging = true;
+    charge += 1;
+    if (charge > 100) charge = 0;
+  } else if (charging && hasBall) {
+    shootBall(charge, charge >= greenStart && charge <= greenEnd);
+  }
+
+  // Ball physics
+  ball.position.add(ballVelocity);
+  ballVelocity.multiplyScalar(0.95);
+  if (ball.position.y > 0.3) ballVelocity.y -= 0.01;
+  else { ball.position.y = 0.3; ballVelocity.y = 0; }
+
+  // Ball follows player if possessed
+  if (hasBall) ball.position.set(player.position.x, player.position.y + 0.5, player.position.z);
+
+  // Scoring
+  if (ball.position.distanceTo(hoop.position) < 0.5 && ballVelocity.length() < 0.05 && !hasBall) {
+    score++;
+    ui.textContent = `Score: ${score}`;
+    ball.material.color.set(0xffa500);
+    ball.position.set(0, 0.3, 0); ballVelocity.set(0, 0, 0);
+    hasBall = true;
+  }
+
+  updateMeter();
+  renderer.render(scene, camera);
+}
+animate();
+</script>
+</body>
+</html>
